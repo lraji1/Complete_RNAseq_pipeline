@@ -585,6 +585,116 @@ cor_matrix <- cor(vst_mat, method = "pearson")
 
 message(sprintf("PCA complete - PC1: %.1f%%, PC2: %.1f%%, PC3: %.1f%%",
                 var_explained[1], var_explained[2], var_explained[3]))
+##-----------------------------------------------------------------------
+# 3.5 COMBINED PCA PLOT (Batch + Treatment + Strain)
+##-----------------------------------------------------------------------
+
+message("\n=== Generating Combined PCA Plot (Batch, Treatment, Strain) ===")
+
+# Create separate folder for combined PCA
+combined_pca_dir <- file.path(qc_output_dir, "PCA_Batch_Sex_Treatment")
+dir.create(combined_pca_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Define deep color palettes (needed here before Section 4)
+deep_colors_set1 <- c("#FDE725", "#D55E00", "#6DCD59", "#FF0000", 
+                      "#4477AA", "#0000FF", "#5B01A5", "#66CCEE", "#EE3377")
+
+# Extract strain and sex abbreviation from sample names (e.g., B6.F, D2.M)
+extract_strain_sex_label <- function(sample_name) {
+  # Determine strain
+  if (grepl("B6", sample_name, ignore.case = TRUE) || grepl("BL6", sample_name, ignore.case = TRUE)) {
+    strain <- "B6"
+  } else if (grepl("D2", sample_name, ignore.case = TRUE) || grepl("DBA", sample_name, ignore.case = TRUE)) {
+    strain <- "D2"
+  } else {
+    strain <- "Unknown"
+  }
+  
+  # Determine sex (look for .F. or .M. pattern)
+  if (grepl("F", sample_name, ignore.case = TRUE) || grepl("female", sample_name, ignore.case = TRUE)) {
+    sex <- ".F"
+  } else if (grepl("M", sample_name, ignore.case = TRUE) || grepl("male", sample_name, ignore.case = TRUE)) {
+    sex <- ".M"
+  } else {
+    sex <- ""
+  }
+  
+  return(paste0(strain, sex))
+}
+
+pca_data$strain_sex_label <- sapply(pca_data$sample, extract_strain_sex_label)
+
+# Create deep batch colors
+n_batches_combined <- length(unique(pca_data$batch))
+if (n_batches_combined <= 9) {
+  batch_colors_combined <- deep_colors_set1[1:n_batches_combined]
+} else {
+  batch_colors_combined <- colorRampPalette(deep_colors_set1)(n_batches_combined)
+}
+names(batch_colors_combined) <- levels(pca_data$batch)
+
+# Define filled shapes for treatment
+# 21 = filled circle (vehicle), 24 = filled triangle (THC), 22 = filled square (None)
+treatment_shapes <- c("vehicle" = 21, "THC" = 24, "None" = 22)
+
+# Create the combined PCA plot
+p_combined_pca <- ggplot(pca_data, aes(x = PC1, y = PC2)) +
+  # Add ellipses by strain (drawn first, behind points) - both dashed
+  stat_ellipse(aes(group = Strain), 
+               level = 0.95, 
+               linewidth = 1.2, 
+               color = "black",
+               linetype = "dashed",
+               show.legend = FALSE) +
+  # Add points with fill by batch, shape by treatment (no outline)
+  geom_point(aes(fill = batch, shape = Treatment), 
+             size = 3.5, 
+             alpha = 0.9) +
+  # Add strain.sex labels with repel (plain text, no boxes)
+  geom_text_repel(aes(label = strain_sex_label), 
+                  size = 3,
+                  max.overlaps = 100,
+                  segment.size = 0.3,
+                  segment.alpha = 0.6,
+                  force = 2,
+                  fontface = "bold") +
+  # Fill scale for batch (inside color)
+  scale_fill_manual(values = batch_colors_combined, 
+                    name = "RNA Batch (Fill)",
+                    guide = guide_legend(order = 1, 
+                                         ncol = 1,
+                                         override.aes = list(shape = 21, size = 4))) +
+  # Shape scale for treatment
+  scale_shape_manual(values = treatment_shapes, 
+                     name = "Treatment (Shape)",
+                     guide = guide_legend(order = 2, 
+                                          ncol = 1,
+                                          override.aes = list(size = 4))) +
+  labs(
+    title = "PCA: Batch (Fill) × Treatment (Shape) × Strain (Ellipse)",
+    subtitle = sprintf("Timepoint 60, No Outlier | PC1: %.1f%%, PC2: %.1f%% | Dashed ellipses = Strain (95%% CI) | Labels = Strain.Sex", 
+                       var_explained[1], var_explained[2]),
+    x = paste0("PC1 (", var_explained[1], "%)"),
+    y = paste0("PC2 (", var_explained[2], "%)")
+  ) +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 9.5),
+    legend.position = "right",
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.spacing.y = unit(0.3, "cm"),
+    legend.box = "vertical",
+    legend.box.spacing = unit(0.5, "cm"),
+    panel.grid.major = element_line(color = "gray85"),
+    panel.grid.minor = element_line(color = "gray92")
+  )
+
+# Save the combined PCA plot
+ggsave(file.path(combined_pca_dir, "PCA_Batch_Sex_Strain_Treatment_Combined.png"),
+       p_combined_pca, width = 13, height = 9, dpi = 300)
+
 
 ##-----------------------------------------------------------------------
 # 4. INDIVIDUAL PCA PLOTS (Saved separately in PCA_by_Variable folder)
@@ -1281,22 +1391,3 @@ write.csv(summary_df, file.path(qc_output_dir, "QC_summary.csv"), row.names = FA
 write.csv(lib_size_df, file.path(qc_output_dir, "library_sizes.csv"), row.names = FALSE)
 write.csv(pca_data, file.path(qc_output_dir, "PCA_coordinates.csv"), row.names = FALSE)
 
-message("\n========================================")
-message("QC PIPELINE COMPLETE (TIMEPOINT 60, NO OUTLIER)")
-message("========================================")
-message(sprintf("Results saved in: %s", qc_output_dir))
-message(sprintf("Outlier excluded: %s", outlier_sample))
-message("\nKey outputs:")
-message(" - 00_batch_color_key.png")
-message(" - 01a_expression_density_WITH_outlier.png (NEW)")
-message(" - 01b_expression_density_NO_outlier.png")
-message(" - 01c_expression_density_all_samples.png")
-message(" - 01d_expression_outlier_detection.png (if additional outliers found)")
-message(sprintf(" - %s/ (individual PCA plots by variable)", basename(pca_by_variable_dir)))
-message(sprintf(" - %s/ (individual group PCA plots)", basename(group_pca_dir)))
-message(" - 03_correlation_heatmap.png")
-message(" - 04_PC_associations_anova.png")
-message(" - 05a_PC2_correlations_barplot.png")
-message(" - 05b_PC2_correlations_heatmap.png")
-message(" - 05_PC2_correlations_combined.png")
-message(" - 06_technical_qc_metrics.png")
