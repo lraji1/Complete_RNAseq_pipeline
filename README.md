@@ -62,7 +62,7 @@ Complete_RNAseq_pipeline/
 ### R Packages
 ```r
 # Core analysis
-DESeq2
+DESeq2, bomaRt
 
 # Enrichment
 fgsea, msigdbr
@@ -112,7 +112,7 @@ source("RNA_SEQ_analysis_Deseq2/withPC2_as_covariate/no_shrinkage_fgsea_wald_ran
 ### Differential Expression
 - Normalized count matrices
 - DESeq2 results tables with log2FC, p-values, FDR
-- Volcano plots and MA plots
+- Volcano plots and DEG bars
 - Top differentially expressed gene lists
 
 ### Enrichment Analysis
